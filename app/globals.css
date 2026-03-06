@@ -1,8 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Oswald:wght@400;500;600;700&display=swap');
+
+:root {
+  --ucl-navy: #0a0e1a;
+  --ucl-navy-light: #0d1a3a;
+  --ucl-blue: #00349A;
+  --ucl-blue-bright: #0057d9;
+  --ucl-gold: #D4AF37;
+  --ucl-gold-light: #F4D03F;
+  --ucl-silver: #C0C0C0;
+  --ucl-dark: #060911;
+  --ucl-text: #8892b0;
+  --ucl-text-dim: #3a4a6c;
+  --ucl-green: #4ecca3;
+  --ucl-red: #e94560;
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background: #0a0e1a;
+  font-family: 'Inter', sans-serif;
+  background: var(--ucl-navy);
   color: #fff;
   min-height: 100vh;
+  overflow-x: hidden;
 }
+
+/* Animated starfield */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background:
+    radial-gradient(1.5px 1.5px at 5% 15%, rgba(212,175,55,0.25), transparent),
+    radial-gradient(1px 1px at 12% 42%, rgba(255,255,255,0.12), transparent),
+    radial-gradient(1.5px 1.5px at 18% 78%, rgba(212,175,55,0.2), transparent),
+    radial-gradient(1px 1px at 25% 25%, rgba(255,255,255,0.1), transparent),
+    radial-gradient(1px 1px at 32% 62%, rgba(255,255,255,0.08), transparent),
+    radial-gradient(1.5px 1.5px at 40% 8%, rgba(212,175,55,0.18), transparent),
+    radial-gradient(1px 1px at 48% 88%, rgba(255,255,255,0.1), transparent),
+    radial-gradient(1px 1px at 55% 35%, rgba(255,255,255,0.06), transparent),
+    radial-gradient(1.5px 1.5px at 62% 55%, rgba(212,175,55,0.15), transparent),
+    radial-gradient(1px 1px at 70% 18%, rgba(255,255,255,0.1), transparent),
+    radial-gradient(1px 1px at 78% 72%, rgba(255,255,255,0.08), transparent),
+    radial-gradient(1.5px 1.5px at 85% 45%, rgba(212,175,55,0.2), transparent),
+    radial-gradient(1px 1px at 92% 82%, rgba(255,255,255,0.1), transparent),
+    radial-gradient(1px 1px at 38% 92%, rgba(212,175,55,0.12), transparent),
+    radial-gradient(1px 1px at 65% 5%, rgba(255,255,255,0.1), transparent),
+    radial-gradient(1.5px 1.5px at 95% 15%, rgba(212,175,55,0.18), transparent);
+  pointer-events: none;
+  z-index: 0;
+  animation: twinkle 8s ease-in-out infinite alternate;
+}
+
+@keyframes twinkle {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.7; }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--ucl-navy); }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--ucl-gold), var(--ucl-blue));
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--ucl-gold); }
+
+::selection { background: rgba(212,175,55,0.3); color: #fff; }

@@ -17,6 +17,40 @@ const QF_SEEDS = [['r16_1','r16_2'],['r16_3','r16_4'],['r16_5','r16_6'],['r16_7'
 const SF_SEEDS = [['qf_1','qf_2'],['qf_3','qf_4']];
 const FINAL_SEEDS = ['sf_1','sf_2'];
 
+const TEAM_META = {
+  'PSG':         { crest: 524 },
+  'Chelsea':     { crest: 61 },
+  'Galatasaray': { crest: 257 },
+  'Liverpool':   { crest: 64 },
+  'Real Madrid': { crest: 86 },
+  'Man City':    { crest: 65 },
+  'Atalanta':    { crest: 102 },
+  'Bayern':      { crest: 5 },
+  'Newcastle':   { crest: 67 },
+  'Barcelona':   { crest: 81 },
+  'Atletico':    { crest: 78 },
+  'Tottenham':   { crest: 73 },
+  'Bodo/Glimt':  { crest: 1139 },
+  'Sporting CP': { crest: 498 },
+  'Leverkusen':  { crest: 3 },
+  'Arsenal':     { crest: 57 },
+};
+
+function TeamCrest({ team, size = 22 }) {
+  const meta = TEAM_META[team];
+  if (!meta) return null;
+  return (
+    <img
+      src={`https://crests.football-data.org/${meta.crest}.png`}
+      alt={team}
+      width={size}
+      height={size}
+      style={{ objectFit: 'contain', borderRadius: 2, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' }}
+      onError={(e) => { e.target.style.display = 'none'; }}
+    />
+  );
+}
+
 export default function AdminPage() {
   const [password, setPassword] = useState('');
   const [loggedIn, setLoggedIn] = useState(false);
@@ -31,71 +65,46 @@ export default function AdminPage() {
   }, []);
 
   function pickResult(matchId, team) {
-    const newResults = { ...results, [matchId]: team };
-
-    // Clear downstream if changed
-    const clearDownstream = (id) => {
-      QF_SEEDS.forEach((pair, i) => {
-        if (pair.includes(id)) {
-          const qfId = 'qf_' + (i + 1);
-          if (newResults[qfId]) { delete newResults[qfId]; clearDownstream(qfId); }
-        }
-      });
-      SF_SEEDS.forEach((pair, i) => {
-        if (pair.includes(id)) {
-          const sfId = 'sf_' + (i + 1);
-          if (newResults[sfId]) { delete newResults[sfId]; clearDownstream(sfId); }
-        }
-      });
-      if (FINAL_SEEDS.includes(id) && newResults['final']) {
-        delete newResults['final'];
-      }
+    const nr = { ...results, [matchId]: team };
+    const clear = (id) => {
+      QF_SEEDS.forEach((p, i) => { if (p.includes(id)) { const q = 'qf_'+(i+1); if (nr[q]) { delete nr[q]; clear(q); } } });
+      SF_SEEDS.forEach((p, i) => { if (p.includes(id)) { const s = 'sf_'+(i+1); if (nr[s]) { delete nr[s]; clear(s); } } });
+      if (FINAL_SEEDS.includes(id) && nr['final']) delete nr['final'];
     };
-    clearDownstream(matchId);
-    setResults(newResults);
+    clear(matchId);
+    setResults(nr);
   }
 
   function getTeam(id) { return results[id] || null; }
 
   async function saveResults() {
-    setSaving(true);
-    setMessage('');
+    setSaving(true); setMessage('');
     const res = await fetch('/api/results', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password, results }),
     });
     const data = await res.json();
     setSaving(false);
-    if (data.success) {
-      setMessage('Results saved! Leaderboard updated.');
-    } else {
-      setMessage('Error: ' + (data.error || 'Something went wrong'));
-    }
+    setMessage(data.success ? 'Results saved! Leaderboard updated.' : 'Error: ' + (data.error || 'Something went wrong'));
   }
 
-  function ResultCard({ matchId, teamA, teamB, round }) {
-    const lockedA = !teamA;
-    const lockedB = !teamB;
+  function ResultCard({ matchId, teamA, teamB }) {
     return (
       <div className="result-card">
-        <div className="result-round">{round}</div>
         <div className="result-buttons">
-          <button
-            className={`result-btn ${results[matchId] === teamA ? 'selected' : ''} ${lockedA ? 'locked' : ''}`}
-            onClick={() => !lockedA && pickResult(matchId, teamA)}
-            disabled={lockedA}
-          >{teamA || 'TBD'}</button>
-          <span className="result-vs">vs</span>
-          <button
-            className={`result-btn ${results[matchId] === teamB ? 'selected' : ''} ${lockedB ? 'locked' : ''}`}
-            onClick={() => !lockedB && pickResult(matchId, teamB)}
-            disabled={lockedB}
-          >{teamB || 'TBD'}</button>
+          <button className={`result-btn ${results[matchId] === teamA ? 'selected' : ''} ${!teamA ? 'locked' : ''}`}
+            onClick={() => teamA && pickResult(matchId, teamA)} disabled={!teamA}>
+            {teamA && <TeamCrest team={teamA} />}
+            <span>{teamA || 'TBD'}</span>
+          </button>
+          <div className="result-vs">VS</div>
+          <button className={`result-btn ${results[matchId] === teamB ? 'selected' : ''} ${!teamB ? 'locked' : ''}`}
+            onClick={() => teamB && pickResult(matchId, teamB)} disabled={!teamB}>
+            {teamB && <TeamCrest team={teamB} />}
+            <span>{teamB || 'TBD'}</span>
+          </button>
         </div>
-        {results[matchId] && (
-          <div className="result-winner">Advanced: <strong>{results[matchId]}</strong></div>
-        )}
+        {results[matchId] && <div className="result-winner">&#10003; {results[matchId]}</div>}
       </div>
     );
   }
@@ -105,15 +114,21 @@ export default function AdminPage() {
       <>
         <div className="admin-login">
           <div className="login-card">
+            <div className="login-star">
+              <svg width="36" height="36" viewBox="0 0 100 100" fill="none">
+                {[0, 45, 90, 135, 180, 225, 270, 315].map((angle, i) => (
+                  <polygon key={i} points="50,10 54,40 50,50 46,40" fill="url(#ag)" transform={`rotate(${angle} 50 50)`} />
+                ))}
+                <circle cx="50" cy="50" r="12" fill="url(#ag)" />
+                <circle cx="50" cy="50" r="8" fill="#0a0e1a" />
+                <defs><linearGradient id="ag" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#F4D03F"/><stop offset="100%" stopColor="#D4AF37"/></linearGradient></defs>
+              </svg>
+            </div>
             <h1>Admin Panel</h1>
-            <p>Enter the admin password to manage results</p>
-            <input
-              type="password"
-              placeholder="Password..."
-              value={password}
+            <p>Enter the password to manage results</p>
+            <input type="password" placeholder="Password..." value={password}
               onChange={e => setPassword(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && setLoggedIn(true)}
-            />
+              onKeyDown={e => e.key === 'Enter' && setLoggedIn(true)} />
             <button onClick={() => setLoggedIn(true)}>Enter</button>
           </div>
         </div>
@@ -126,47 +141,51 @@ export default function AdminPage() {
     <>
       <div className="admin-page">
         <header className="admin-header">
-          <h1>Admin Panel &mdash; Enter Real Results</h1>
-          <p>Select the team that actually advanced in each match</p>
+          <svg width="30" height="30" viewBox="0 0 100 100" fill="none" style={{ marginBottom: 10 }}>
+            {[0, 45, 90, 135, 180, 225, 270, 315].map((angle, i) => (
+              <polygon key={i} points="50,10 54,40 50,50 46,40" fill="url(#ahg)" transform={`rotate(${angle} 50 50)`} />
+            ))}
+            <circle cx="50" cy="50" r="12" fill="url(#ahg)" />
+            <circle cx="50" cy="50" r="8" fill="#0a1628" />
+            <defs><linearGradient id="ahg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#F4D03F"/><stop offset="100%" stopColor="#D4AF37"/></linearGradient></defs>
+          </svg>
+          <h1>Admin Panel</h1>
+          <p>Select the team that advanced in each match</p>
         </header>
 
         <div className="admin-container">
           <div className="round-section">
-            <h2>Round of 16</h2>
+            <h2><span className="round-dot" /> Round of 16</h2>
             <div className="results-grid">
-              {R16.map(m => <ResultCard key={m.id} matchId={m.id} teamA={m.home} teamB={m.away} round="R16" />)}
+              {R16.map(m => <ResultCard key={m.id} matchId={m.id} teamA={m.home} teamB={m.away} />)}
             </div>
           </div>
 
           <div className="round-section">
-            <h2>Quarter-Finals</h2>
+            <h2><span className="round-dot" /> Quarter-Finals</h2>
             <div className="results-grid">
-              {QF_SEEDS.map((pair, i) => (
-                <ResultCard key={i} matchId={'qf_' + (i+1)} teamA={getTeam(pair[0])} teamB={getTeam(pair[1])} round="QF" />
-              ))}
+              {QF_SEEDS.map((pair, i) => <ResultCard key={i} matchId={'qf_'+(i+1)} teamA={getTeam(pair[0])} teamB={getTeam(pair[1])} />)}
             </div>
           </div>
 
           <div className="round-section">
-            <h2>Semi-Finals</h2>
+            <h2><span className="round-dot" /> Semi-Finals</h2>
             <div className="results-grid">
-              {SF_SEEDS.map((pair, i) => (
-                <ResultCard key={i} matchId={'sf_' + (i+1)} teamA={getTeam(pair[0])} teamB={getTeam(pair[1])} round="SF" />
-              ))}
+              {SF_SEEDS.map((pair, i) => <ResultCard key={i} matchId={'sf_'+(i+1)} teamA={getTeam(pair[0])} teamB={getTeam(pair[1])} />)}
             </div>
           </div>
 
           <div className="round-section">
-            <h2>Final</h2>
+            <h2><span className="round-dot" /> Final</h2>
             <div className="results-grid">
-              <ResultCard matchId="final" teamA={getTeam(FINAL_SEEDS[0])} teamB={getTeam(FINAL_SEEDS[1])} round="FINAL" />
+              <ResultCard matchId="final" teamA={getTeam(FINAL_SEEDS[0])} teamB={getTeam(FINAL_SEEDS[1])} />
             </div>
           </div>
 
           <button className="save-btn" onClick={saveResults} disabled={saving}>
             {saving ? 'Saving...' : 'Save Results & Update Leaderboard'}
           </button>
-          {message && <div className={`message ${message.includes('Error') ? 'error' : 'success'}`}>{message}</div>}
+          {message && <div className={`msg ${message.includes('Error') ? 'msg-error' : 'msg-success'}`}>{message}</div>}
         </div>
       </div>
       <style jsx global>{`${adminStyles}`}</style>
@@ -175,86 +194,132 @@ export default function AdminPage() {
 }
 
 const adminStyles = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Oswald:wght@400;500;600;700&display=swap');
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0a0e1a; color: #fff; min-height: 100vh; }
+  body {
+    font-family: 'Inter', sans-serif; background: #0a0e1a; color: #fff; min-height: 100vh;
+  }
 
   .admin-login {
-    display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px;
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh; padding: 20px;
+    background: radial-gradient(ellipse at 50% 50%, rgba(212,175,55,0.06), transparent 60%);
   }
   .login-card {
-    background: rgba(255,255,255,0.05); border-radius: 16px; padding: 40px;
-    border: 1px solid rgba(255,255,255,0.1); text-align: center; max-width: 400px; width: 100%;
+    background: linear-gradient(145deg, rgba(13,26,58,0.9), rgba(6,9,17,0.95));
+    border-radius: 24px; padding: 48px 40px; text-align: center;
+    max-width: 400px; width: 100%;
+    border: 1px solid rgba(212,175,55,0.12);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
   }
-  .login-card h1 { font-size: 1.8rem; color: #e94560; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 2px; }
-  .login-card p { color: #8892b0; margin-bottom: 25px; }
+  .login-star { margin-bottom: 18px; }
+  .login-card h1 {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.6rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 5px; margin-bottom: 8px;
+    background: linear-gradient(180deg, #F4D03F, #D4AF37);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .login-card p { color: #5a6a8a; margin-bottom: 28px; font-size: 0.85rem; }
   .login-card input {
-    width: 100%; padding: 14px 18px; border-radius: 8px;
-    border: 2px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.06);
-    color: #fff; font-size: 1rem; outline: none; margin-bottom: 15px;
+    width: 100%; padding: 14px 18px; border-radius: 12px;
+    border: 2px solid rgba(212,175,55,0.15); background: rgba(255,255,255,0.03);
+    color: #fff; font-size: 1rem; outline: none; margin-bottom: 14px;
+    transition: border-color 0.3s; font-family: 'Inter', sans-serif;
   }
-  .login-card input:focus { border-color: #e94560; }
+  .login-card input:focus { border-color: #D4AF37; box-shadow: 0 0 25px rgba(212,175,55,0.1); }
+  .login-card input::placeholder { color: #2a3a5c; }
   .login-card button {
-    width: 100%; padding: 14px; background: linear-gradient(135deg, #e94560, #c23152);
-    color: #fff; border: none; border-radius: 8px; font-size: 1rem; font-weight: 700;
-    cursor: pointer; text-transform: uppercase; letter-spacing: 2px;
+    width: 100%; padding: 14px;
+    background: linear-gradient(135deg, #D4AF37, #B8962E);
+    color: #0a0e1a; border: none; border-radius: 12px;
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.95rem; font-weight: 600; cursor: pointer;
+    text-transform: uppercase; letter-spacing: 4px;
+    transition: all 0.3s; box-shadow: 0 4px 15px rgba(212,175,55,0.3);
   }
-  .login-card button:hover { opacity: 0.9; }
+  .login-card button:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(212,175,55,0.4); }
 
   .admin-header {
-    background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
-    padding: 30px 20px; text-align: center; border-bottom: 3px solid #e94560;
+    background: linear-gradient(135deg, #060911, #0a1628, #0d1f42);
+    padding: 40px 20px; text-align: center;
+    border-bottom: 2px solid rgba(212,175,55,0.2);
   }
-  .admin-header h1 { font-size: 1.6rem; text-transform: uppercase; letter-spacing: 2px; }
-  .admin-header p { color: #8892b0; margin-top: 8px; }
+  .admin-header h1 {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.6rem; font-weight: 600; text-transform: uppercase; letter-spacing: 5px;
+    background: linear-gradient(180deg, #F4D03F, #D4AF37);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .admin-header p { color: #5a6a8a; margin-top: 8px; font-size: 0.85rem; }
 
-  .admin-container { max-width: 900px; margin: 0 auto; padding: 30px 20px; }
+  .admin-container { max-width: 900px; margin: 0 auto; padding: 35px 20px; }
 
   .round-section { margin-bottom: 35px; }
   .round-section h2 {
-    font-size: 1.1rem; color: #e94560; text-transform: uppercase;
-    letter-spacing: 2px; margin-bottom: 15px; padding-bottom: 8px;
-    border-bottom: 1px solid rgba(233,69,96,0.3);
+    display: flex; align-items: center; gap: 10px;
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.9rem; font-weight: 500; color: #fff;
+    text-transform: uppercase; letter-spacing: 4px;
+    margin-bottom: 16px;
+  }
+  .round-dot {
+    width: 8px; height: 8px;
+    background: linear-gradient(135deg, #D4AF37, #F4D03F);
+    border-radius: 50%; display: inline-block;
+    box-shadow: 0 0 8px rgba(212,175,55,0.3);
   }
 
   .results-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 12px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px;
   }
 
   .result-card {
-    background: rgba(255,255,255,0.04); border-radius: 10px;
-    padding: 16px; border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.02); border-radius: 14px;
+    padding: 4px; border: 1px solid rgba(255,255,255,0.04);
+    transition: all 0.3s;
   }
-  .result-round {
-    font-size: 0.65rem; color: #8892b0; text-transform: uppercase;
-    letter-spacing: 2px; margin-bottom: 10px;
+  .result-card:hover { border-color: rgba(212,175,55,0.2); }
+
+  .result-buttons { display: flex; align-items: center; gap: 0; }
+  .result-vs {
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.7rem; font-weight: 500; color: #2a3a5c; letter-spacing: 2px; padding: 0 4px;
   }
-  .result-buttons { display: flex; gap: 8px; align-items: center; }
-  .result-vs { color: #555; font-size: 0.8rem; font-weight: 700; }
   .result-btn {
-    flex: 1; padding: 12px 8px; border-radius: 8px;
-    border: 2px solid rgba(255,255,255,0.12); background: transparent;
-    color: #8892b0; font-size: 0.9rem; font-weight: 600;
-    cursor: pointer; transition: all 0.2s; text-align: center;
+    flex: 1; padding: 12px 10px; border-radius: 12px;
+    border: 2px solid transparent; background: rgba(255,255,255,0.02);
+    color: #5a6a8a; font-size: 0.85rem; font-weight: 600;
+    cursor: pointer; transition: all 0.25s; text-align: center;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
   }
-  .result-btn:hover { border-color: #e94560; color: #fff; }
-  .result-btn.selected { background: rgba(233,69,96,0.2); border-color: #e94560; color: #e94560; font-weight: 700; }
-  .result-btn.locked { opacity: 0.3; pointer-events: none; }
-  .result-winner { margin-top: 8px; font-size: 0.8rem; color: #4ecca3; text-align: center; }
-  .result-winner strong { color: #4ecca3; }
+  .result-btn:hover:not(.locked) { background: rgba(78,204,163,0.06); color: #4ecca3; border-color: rgba(78,204,163,0.2); }
+  .result-btn.selected {
+    background: linear-gradient(135deg, rgba(78,204,163,0.12), rgba(78,204,163,0.04));
+    border-color: #4ecca3; color: #4ecca3; font-weight: 700;
+  }
+  .result-btn.locked { opacity: 0.2; cursor: not-allowed; }
+  .result-winner {
+    text-align: center; padding: 6px; font-size: 0.75rem;
+    color: #4ecca3; font-weight: 700; letter-spacing: 1px;
+  }
 
   .save-btn {
-    display: block; width: 100%; padding: 16px; margin-top: 10px;
-    background: linear-gradient(135deg, #e94560, #c23152);
-    color: #fff; border: none; border-radius: 10px;
-    font-size: 1.1rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 2px; cursor: pointer; transition: transform 0.2s;
+    display: block; width: 100%; padding: 18px; margin-top: 10px;
+    background: linear-gradient(135deg, #4ecca3, #38b28a);
+    color: #0a0e1a; border: none; border-radius: 14px;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 4px; cursor: pointer; transition: all 0.3s;
+    box-shadow: 0 4px 20px rgba(78,204,163,0.3);
   }
-  .save-btn:hover { transform: translateY(-2px); }
-  .save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .save-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(78,204,163,0.4); }
+  .save-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
-  .message {
-    text-align: center; padding: 12px; border-radius: 8px; margin-top: 15px; font-weight: 600;
+  .msg {
+    text-align: center; padding: 14px; border-radius: 12px; margin-top: 16px;
+    font-weight: 700; font-size: 0.85rem; letter-spacing: 1px;
   }
-  .message.success { background: rgba(78,204,163,0.15); color: #4ecca3; }
-  .message.error { background: rgba(233,69,96,0.15); color: #e94560; }
+  .msg-success { background: rgba(78,204,163,0.08); color: #4ecca3; border: 1px solid rgba(78,204,163,0.15); }
+  .msg-error { background: rgba(233,69,96,0.08); color: #e94560; border: 1px solid rgba(233,69,96,0.15); }
 `;
