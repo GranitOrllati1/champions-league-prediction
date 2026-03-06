@@ -17,16 +17,57 @@ const QF_SEEDS = [['r16_1','r16_2'],['r16_3','r16_4'],['r16_5','r16_6'],['r16_7'
 const SF_SEEDS = [['qf_1','qf_2'],['qf_3','qf_4']];
 const FINAL_SEEDS = ['sf_1','sf_2'];
 
+const R16_IDS = R16.map(m => m.id);
+const QF_IDS = QF_SEEDS.map((_, i) => 'qf_' + (i + 1));
+const SF_IDS = SF_SEEDS.map((_, i) => 'sf_' + (i + 1));
+
+function calcScores(picks, results) {
+  let r16 = 0, qf = 0, sf = 0, final = 0;
+
+  // R16: 1pt each correct
+  R16_IDS.forEach(id => {
+    if (results[id] && picks[id] === results[id]) r16++;
+  });
+
+  // QF: 1pt each correct
+  QF_IDS.forEach(id => {
+    if (results[id] && picks[id] === results[id]) qf++;
+  });
+
+  // SF: 1pt each correct
+  SF_IDS.forEach(id => {
+    if (results[id] && picks[id] === results[id]) sf++;
+  });
+
+  // Finalist bonus: 2pts for each correct finalist
+  if (results['sf_1'] && results['sf_2']) {
+    const realFinalists = [results['sf_1'], results['sf_2']];
+    const pickFinalists = [picks['sf_1'], picks['sf_2']];
+    pickFinalists.forEach(pf => {
+      if (pf && realFinalists.includes(pf)) final += 2;
+    });
+  }
+
+  // Champion: 3pts
+  if (results['final'] && picks['final'] === results['final']) {
+    final += 3;
+  }
+
+  return { r16, qf, sf, final, total: r16 + qf + sf + final };
+}
+
 export default function Home() {
   const [picks, setPicks] = useState({});
   const [name, setName] = useState('');
   const [predictions, setPredictions] = useState([]);
+  const [results, setResults] = useState({});
   const [activeTab, setActiveTab] = useState(0);
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchPredictions();
+    fetchResults();
   }, []);
 
   async function fetchPredictions() {
@@ -36,12 +77,15 @@ export default function Home() {
     setLoading(false);
   }
 
+  async function fetchResults() {
+    const res = await fetch('/api/results');
+    const data = await res.json();
+    setResults(data || {});
+  }
+
   function pick(matchId, team) {
     const newPicks = { ...picks, [matchId]: team };
-
-    // Clear downstream picks that depended on changed values
     const clearDownstream = (id) => {
-      // Find what depends on this id
       QF_SEEDS.forEach((pair, i) => {
         if (pair.includes(id)) {
           const qfId = 'qf_' + (i + 1);
@@ -58,7 +102,6 @@ export default function Home() {
         delete newPicks['final'];
       }
     };
-
     clearDownstream(matchId);
     setPicks(newPicks);
   }
@@ -67,18 +110,11 @@ export default function Home() {
 
   async function submitPrediction() {
     if (!name.trim()) { alert('Please enter your name!'); return; }
-
-    const allIds = [
-      ...R16.map(m => m.id),
-      ...QF_SEEDS.map((_, i) => 'qf_' + (i + 1)),
-      ...SF_SEEDS.map((_, i) => 'sf_' + (i + 1)),
-      'final'
-    ];
+    const allIds = [...R16_IDS, ...QF_IDS, ...SF_IDS, 'final'];
     if (allIds.some(id => !picks[id])) {
       alert('Please make all your picks before submitting!');
       return;
     }
-
     const existing = predictions.find(p => p.name.toLowerCase() === name.trim().toLowerCase());
     if (existing && !confirm(`"${name.trim()}" already submitted. Overwrite?`)) return;
 
@@ -87,19 +123,24 @@ export default function Home() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: name.trim(), picks }),
     });
-
     setPicks({});
     setName('');
     fetchPredictions();
     alert(`${name.trim()}'s predictions saved!`);
   }
 
-  function PickCard({ matchId, teamA, teamB, roundLabel }) {
+  // Build leaderboard with scores
+  const hasResults = Object.keys(results).length > 0;
+  const leaderboard = predictions.map(p => {
+    const scores = hasResults ? calcScores(p.picks, results) : { r16: 0, qf: 0, sf: 0, final: 0, total: 0 };
+    return { name: p.name, ...scores };
+  }).sort((a, b) => b.total - a.total);
+
+  function PickCard({ matchId, teamA, teamB }) {
     const lockedA = !teamA;
     const lockedB = !teamB;
     return (
       <div className="match-pick-card">
-        {roundLabel && <div className="pick-label">{roundLabel}</div>}
         <div className="pick-buttons">
           <button
             className={`pick-btn ${picks[matchId] === teamA ? 'selected' : ''} ${lockedA ? 'locked' : ''}`}
@@ -116,11 +157,19 @@ export default function Home() {
     );
   }
 
-  function BracketMatch({ teamA, teamB, winner }) {
+  function BracketMatch({ teamA, teamB, winner, resultWinner }) {
     return (
       <div className="bracket-match">
-        <div className={`bracket-team ${winner === teamA ? 'winner' : winner ? 'loser' : ''}`}>{teamA || 'TBD'}</div>
-        <div className={`bracket-team ${winner === teamB ? 'winner' : winner ? 'loser' : ''}`}>{teamB || 'TBD'}</div>
+        <div className={`bracket-team ${winner === teamA ? 'winner' : winner ? 'loser' : ''} ${resultWinner && resultWinner === teamA && winner !== teamA ? 'wrong-pick' : ''}`}>
+          {teamA || 'TBD'}
+          {resultWinner && winner === teamA && resultWinner === teamA && <span className="check"> ✓</span>}
+          {resultWinner && winner === teamA && resultWinner !== teamA && <span className="cross"> ✗</span>}
+        </div>
+        <div className={`bracket-team ${winner === teamB ? 'winner' : winner ? 'loser' : ''} ${resultWinner && resultWinner === teamB && winner !== teamB ? 'wrong-pick' : ''}`}>
+          {teamB || 'TBD'}
+          {resultWinner && winner === teamB && resultWinner === teamB && <span className="check"> ✓</span>}
+          {resultWinner && winner === teamB && resultWinner !== teamB && <span className="cross"> ✗</span>}
+        </div>
       </div>
     );
   }
@@ -142,46 +191,48 @@ export default function Home() {
         <div className="bracket">
           <div className="round">
             <div className="round-header">Round of 16</div>
-            {r16L.map(m => <BracketMatch key={m.id} teamA={m.home} teamB={m.away} winner={pk[m.id]} />)}
+            {r16L.map(m => <BracketMatch key={m.id} teamA={m.home} teamB={m.away} winner={pk[m.id]} resultWinner={results[m.id]} />)}
           </div>
           <div className="connector" />
           <div className="round">
             <div className="round-header">Quarter-Finals</div>
             <div className="qf-col">
-              {qfData.slice(0, 2).map((q, i) => <BracketMatch key={i} teamA={q.teamA} teamB={q.teamB} winner={q.winner} />)}
+              {qfData.slice(0, 2).map((q, i) => <BracketMatch key={i} teamA={q.teamA} teamB={q.teamB} winner={q.winner} resultWinner={results['qf_' + (i + 1)]} />)}
             </div>
           </div>
           <div className="connector" />
           <div className="round">
             <div className="round-header">Semi-Finals</div>
             <div className="sf-col">
-              <BracketMatch teamA={sfData[0].teamA} teamB={sfData[0].teamB} winner={sfData[0].winner} />
+              <BracketMatch teamA={sfData[0].teamA} teamB={sfData[0].teamB} winner={sfData[0].winner} resultWinner={results['sf_1']} />
             </div>
           </div>
           <div className="connector" />
           <div className="trophy-col">
             <div className="trophy">&#127942;</div>
             <div className="champion-name">{pk['final'] || 'TBD'}</div>
+            {results['final'] && pk['final'] === results['final'] && <div className="champ-correct">✓ Correct!</div>}
+            {results['final'] && pk['final'] !== results['final'] && <div className="champ-wrong">✗ Wrong</div>}
             <div className="venue">30 May 2026<br />Puskas Arena<br />Budapest</div>
           </div>
           <div className="connector" />
           <div className="round">
             <div className="round-header">Semi-Finals</div>
             <div className="sf-col">
-              <BracketMatch teamA={sfData[1].teamA} teamB={sfData[1].teamB} winner={sfData[1].winner} />
+              <BracketMatch teamA={sfData[1].teamA} teamB={sfData[1].teamB} winner={sfData[1].winner} resultWinner={results['sf_2']} />
             </div>
           </div>
           <div className="connector" />
           <div className="round">
             <div className="round-header">Quarter-Finals</div>
             <div className="qf-col">
-              {qfData.slice(2, 4).map((q, i) => <BracketMatch key={i} teamA={q.teamA} teamB={q.teamB} winner={q.winner} />)}
+              {qfData.slice(2, 4).map((q, i) => <BracketMatch key={i} teamA={q.teamA} teamB={q.teamB} winner={q.winner} resultWinner={results['qf_' + (i + 3)]} />)}
             </div>
           </div>
           <div className="connector" />
           <div className="round">
             <div className="round-header">Round of 16</div>
-            {r16R.map(m => <BracketMatch key={m.id} teamA={m.home} teamB={m.away} winner={pk[m.id]} />)}
+            {r16R.map(m => <BracketMatch key={m.id} teamA={m.home} teamB={m.away} winner={pk[m.id]} resultWinner={results[m.id]} />)}
           </div>
         </div>
       </div>
@@ -244,14 +295,17 @@ export default function Home() {
               <tr><th>Rank</th><th>Player</th><th>R16</th><th>QF</th><th>SF</th><th>Final</th><th>Total</th></tr>
             </thead>
             <tbody>
-              {predictions.length === 0 ? (
+              {leaderboard.length === 0 ? (
                 <tr><td colSpan={7} className="no-data">{loading ? 'Loading...' : 'No predictions yet. Be the first!'}</td></tr>
-              ) : predictions.map((p, i) => (
+              ) : leaderboard.map((p, i) => (
                 <tr key={p.name}>
                   <td className={i < 3 ? `rank-${i+1}` : ''}>{i + 1}</td>
                   <td style={{ fontWeight: 600 }}>{p.name}</td>
-                  <td>-</td><td>-</td><td>-</td><td>-</td>
-                  <td style={{ color: '#d4af37', fontWeight: 700 }}>0</td>
+                  <td>{hasResults ? p.r16 : '-'}</td>
+                  <td>{hasResults ? p.qf : '-'}</td>
+                  <td>{hasResults ? p.sf : '-'}</td>
+                  <td>{hasResults ? p.final : '-'}</td>
+                  <td style={{ color: '#d4af37', fontWeight: 700, fontSize: '1.1rem' }}>{hasResults ? p.total : '-'}</td>
                 </tr>
               ))}
             </tbody>
@@ -306,9 +360,7 @@ export default function Home() {
       <style jsx global>{`
         header {
           background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-          padding: 35px 20px;
-          text-align: center;
-          border-bottom: 3px solid #d4af37;
+          padding: 35px 20px; text-align: center; border-bottom: 3px solid #d4af37;
         }
         header h1 { font-size: 2.4rem; text-transform: uppercase; letter-spacing: 4px; }
         header h1 span { color: #d4af37; }
@@ -373,7 +425,6 @@ export default function Home() {
         }
         .submit-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 25px rgba(212,175,55,0.4); }
 
-        /* Leaderboard */
         .leaderboard { margin-bottom: 40px; }
         .leaderboard-table {
           width: 100%; border-collapse: collapse;
@@ -391,7 +442,6 @@ export default function Home() {
         .rank-3 { color: #cd7f32; font-weight: 700; }
         .no-data { text-align: center; color: #555; padding: 40px; font-size: 0.95rem; }
 
-        /* Tabs */
         .players-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
         .player-tab {
           padding: 8px 18px; border-radius: 20px; border: 2px solid rgba(255,255,255,0.15);
@@ -401,15 +451,12 @@ export default function Home() {
         .player-tab:hover { border-color: #d4af37; color: #fff; }
         .player-tab.active { background: #d4af37; color: #0a0e1a; border-color: #d4af37; }
 
-        /* Bracket */
         .bracket-wrap { overflow-x: auto; padding-bottom: 10px; }
         .bracket {
           display: flex; align-items: center; min-width: 1100px;
           padding: 20px 0; justify-content: center;
         }
-        .round {
-          display: flex; flex-direction: column; justify-content: space-around; min-width: 160px;
-        }
+        .round { display: flex; flex-direction: column; justify-content: space-around; min-width: 160px; }
         .round-header {
           text-align: center; font-size: 0.7rem; color: #d4af37;
           text-transform: uppercase; letter-spacing: 2px; font-weight: 600; margin-bottom: 12px;
@@ -425,6 +472,8 @@ export default function Home() {
         .bracket-team:last-child { border-bottom: none; }
         .bracket-team.winner { background: rgba(212,175,55,0.15); color: #d4af37; font-weight: 700; }
         .bracket-team.loser { color: #555; }
+        .bracket-team .check { color: #4ecca3; font-weight: 700; }
+        .bracket-team .cross { color: #e94560; font-weight: 700; }
         .connector { width: 25px; flex-shrink: 0; }
         .qf-col { display: flex; flex-direction: column; justify-content: space-around; height: 100%; gap: 50px; }
         .sf-col { display: flex; flex-direction: column; justify-content: center; height: 100%; }
@@ -432,8 +481,9 @@ export default function Home() {
         .trophy-col .trophy { font-size: 2.8rem; }
         .trophy-col .champion-name { font-size: 1.2rem; font-weight: 700; color: #d4af37; margin-top: 8px; }
         .trophy-col .venue { font-size: 0.7rem; color: #8892b0; margin-top: 8px; line-height: 1.5; }
+        .champ-correct { color: #4ecca3; font-size: 0.8rem; font-weight: 700; margin-top: 4px; }
+        .champ-wrong { color: #e94560; font-size: 0.8rem; font-weight: 700; margin-top: 4px; }
 
-        /* How to Play */
         .how-to-play-btn {
           position: fixed; bottom: 25px; right: 25px;
           background: linear-gradient(135deg, #d4af37, #b8962e);
